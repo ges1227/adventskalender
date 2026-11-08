@@ -214,7 +214,7 @@
   .skip:hover { color: var(--ink); }
   .skip { opacity: 0; pointer-events: none; transition: opacity .8s ease; }
   .can-skip .skip { opacity: 1; pointer-events: auto; }
-  html.held, html.held body { overflow: hidden; overscroll-behavior: none; }
+  body.gate #c5, body.gate #c6, body.gate #end { display: none; }
   .skip:focus-visible, .again:focus-visible { outline: 2px solid var(--ginger); outline-offset: 4px; }
   .cleared-note { pointer-events: none; opacity: 0; transform: rotate(-2deg) translateY(6px); transition: opacity .8s ease .5s, transform .8s ease .5s; margin: 0; }
   .win-done .rub-hint-wrap { opacity: 0; pointer-events: none; }
@@ -887,40 +887,29 @@
     windowCleared = true;
     fc.classList.add('gone');
     document.getElementById('winActions').classList.add('win-done');
-    releaseHold();
+    openGate();
     dirty = true;
   }
 
-  // scrolling stops at the window until it has been wiped clear
+  // The rest of the story only exists once the window is wiped clear.
+  // Until then the page simply ends at the window, so even fast phone
+  // flicks run out naturally there instead of fighting a scroll lock.
   const winBox = win.querySelector('.window');
   const winActions = document.getElementById('winActions');
   const skipBtn = document.getElementById('skipBtn');
-  let held = false, holdY = 0, skipTimer = 0;
-  function startHold() {
-    held = true;
-    // hard stop: freeze right where we are, no re-centering
-    root.classList.add('held');
-    holdY = window.scrollY;
-    // only if a fast flick carried the window partly off screen, move it back once
-    const r = winBox.getBoundingClientRect();
-    if (r.top < 0 || r.bottom > innerHeight) {
-      holdY = Math.max(0, Math.round(holdY + r.top + r.height / 2 - innerHeight / 2));
-      window.scrollTo({ top: holdY, behavior: 'instant' });
-    }
-    skipTimer = setTimeout(() => { winActions.classList.add('can-skip'); skipBtn.tabIndex = 0; }, 12000);
-  }
-  function releaseHold() {
+  let skipTimer = 0;
+  body.classList.add('gate');
+  function openGate() {
     clearTimeout(skipTimer);
-    if (!held) return;
-    held = false;
-    root.classList.remove('held');
+    body.classList.remove('gate');
   }
-  addEventListener('wheel', (e) => { if (held) e.preventDefault(); }, { passive: false });
-  addEventListener('touchmove', (e) => { if (held) e.preventDefault(); }, { passive: false });
-  const scrollKeys = new Set([' ', 'PageDown', 'PageUp', 'ArrowDown', 'ArrowUp', 'Home', 'End']);
-  addEventListener('keydown', (e) => {
-    if (held && scrollKeys.has(e.key) && !(e.target instanceof HTMLButtonElement)) e.preventDefault();
-  });
+  const gateIO = new IntersectionObserver((es) => {
+    if (es[0].isIntersecting && !skipTimer && !windowCleared) {
+      skipTimer = setTimeout(() => { winActions.classList.add('can-skip'); skipBtn.tabIndex = 0; }, 12000);
+      gateIO.disconnect();
+    }
+  }, { threshold: .6 });
+  gateIO.observe(winBox);
   fc.addEventListener('pointerdown', (e) => { rubbing = true; last = null; fc.setPointerCapture(e.pointerId); rubAt(e); });
   fc.addEventListener('pointermove', (e) => { if (rubbing || e.pointerType === 'mouse') rubAt(e); });
   const stop = () => { rubbing = false; last = null; };
@@ -933,14 +922,9 @@
   const c2 = document.getElementById('c2'), c3 = document.getElementById('c3');
   function onScroll() {
     const y = window.scrollY, vh = innerHeight;
-    if (held) return;
     const start = c2.offsetTop - vh * .5;
     const end = c3.offsetTop + c3.offsetHeight - vh * .5;
     drawP = clamp((y - start) / (end - start), 0, 1);
-    if (!windowCleared && !root.classList.contains('locked')) {
-      const r = winBox.getBoundingClientRect();
-      if (r.top + r.height / 2 < vh * .55) startHold();
-    }
     dirty = true;
   }
   addEventListener('scroll', onScroll, { passive: true });
