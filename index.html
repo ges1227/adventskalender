@@ -212,6 +212,9 @@
     padding: .2rem 0; cursor: pointer;
   }
   .skip:hover { color: var(--ink); }
+  .skip { opacity: 0; pointer-events: none; transition: opacity .8s ease; }
+  .can-skip .skip { opacity: 1; pointer-events: auto; }
+  html.held, html.held body { overflow: hidden; overscroll-behavior: none; }
   .skip:focus-visible, .again:focus-visible { outline: 2px solid var(--ginger); outline-offset: 4px; }
   .cleared-note { pointer-events: none; opacity: 0; transform: rotate(-2deg) translateY(6px); transition: opacity .8s ease .5s, transform .8s ease .5s; margin: 0; }
   .win-done .rub-hint-wrap { opacity: 0; pointer-events: none; }
@@ -409,8 +412,8 @@
     </div>
     <div class="win-actions" id="winActions">
       <div class="rub-hint-wrap">
-        <p class="rub-hint"><span class="touch">Reib mal mit dem Finger über das Fenster.</span><span class="mouse">Fahr mal mit der Maus über das Fenster.</span></p>
-        <button class="skip" id="skipBtn">Ohne Reiben weiter</button>
+        <p class="rub-hint"><span class="touch">Reib das Fenster frei, um weiterzulesen.</span><span class="mouse">Fahr mit der Maus über das Fenster, um weiterzulesen.</span></p>
+        <button class="skip" id="skipBtn" tabindex="-1">Ich geb auf, lass mich durch</button>
       </div>
       <p class="aside cleared-note">Na also. Schon viel geschmeidiger.</p>
     </div>
@@ -884,8 +887,35 @@
     windowCleared = true;
     fc.classList.add('gone');
     document.getElementById('winActions').classList.add('win-done');
+    releaseHold();
     dirty = true;
   }
+
+  // scrolling stops at the window until it has been wiped clear
+  const winBox = win.querySelector('.window');
+  const winActions = document.getElementById('winActions');
+  const skipBtn = document.getElementById('skipBtn');
+  let held = false, holdY = 0, skipTimer = 0;
+  function startHold() {
+    held = true;
+    const r = winBox.getBoundingClientRect();
+    holdY = Math.max(0, Math.round(window.scrollY + r.top + r.height / 2 - innerHeight / 2));
+    window.scrollTo({ top: holdY, behavior: 'instant' });
+    root.classList.add('held');
+    skipTimer = setTimeout(() => { winActions.classList.add('can-skip'); skipBtn.tabIndex = 0; }, 12000);
+  }
+  function releaseHold() {
+    clearTimeout(skipTimer);
+    if (!held) return;
+    held = false;
+    root.classList.remove('held');
+  }
+  addEventListener('wheel', (e) => { if (held) e.preventDefault(); }, { passive: false });
+  addEventListener('touchmove', (e) => { if (held) e.preventDefault(); }, { passive: false });
+  const scrollKeys = new Set([' ', 'PageDown', 'PageUp', 'ArrowDown', 'ArrowUp', 'Home', 'End']);
+  addEventListener('keydown', (e) => {
+    if (held && scrollKeys.has(e.key) && !(e.target instanceof HTMLButtonElement)) e.preventDefault();
+  });
   fc.addEventListener('pointerdown', (e) => { rubbing = true; last = null; fc.setPointerCapture(e.pointerId); rubAt(e); });
   fc.addEventListener('pointermove', (e) => { if (rubbing || e.pointerType === 'mouse') rubAt(e); });
   const stop = () => { rubbing = false; last = null; };
@@ -898,10 +928,17 @@
   const c2 = document.getElementById('c2'), c3 = document.getElementById('c3');
   function onScroll() {
     const y = window.scrollY, vh = innerHeight;
+    if (held) {
+      if (Math.abs(y - holdY) > 2) window.scrollTo({ top: holdY, behavior: 'instant' });
+      return;
+    }
     const start = c2.offsetTop - vh * .5;
     const end = c3.offsetTop + c3.offsetHeight - vh * .5;
     drawP = clamp((y - start) / (end - start), 0, 1);
-    if (!windowCleared && y > win.offsetTop + win.offsetHeight - vh * .25) finishWindow();
+    if (!windowCleared && !root.classList.contains('locked')) {
+      const r = winBox.getBoundingClientRect();
+      if (r.top + r.height / 2 < vh * .55) startHold();
+    }
     dirty = true;
   }
   addEventListener('scroll', onScroll, { passive: true });
