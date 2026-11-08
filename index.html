@@ -898,10 +898,15 @@
   let held = false, holdY = 0, skipTimer = 0;
   function startHold() {
     held = true;
-    const r = winBox.getBoundingClientRect();
-    holdY = Math.max(0, Math.round(window.scrollY + r.top + r.height / 2 - innerHeight / 2));
-    window.scrollTo({ top: holdY, behavior: 'instant' });
+    // hard stop: freeze right where we are, no re-centering
     root.classList.add('held');
+    holdY = window.scrollY;
+    // only if a fast flick carried the window partly off screen, move it back once
+    const r = winBox.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > innerHeight) {
+      holdY = Math.max(0, Math.round(holdY + r.top + r.height / 2 - innerHeight / 2));
+      window.scrollTo({ top: holdY, behavior: 'instant' });
+    }
     skipTimer = setTimeout(() => { winActions.classList.add('can-skip'); skipBtn.tabIndex = 0; }, 12000);
   }
   function releaseHold() {
@@ -928,10 +933,7 @@
   const c2 = document.getElementById('c2'), c3 = document.getElementById('c3');
   function onScroll() {
     const y = window.scrollY, vh = innerHeight;
-    if (held) {
-      if (Math.abs(y - holdY) > 2) window.scrollTo({ top: holdY, behavior: 'instant' });
-      return;
-    }
+    if (held) return;
     const start = c2.offsetTop - vh * .5;
     const end = c3.offsetTop + c3.offsetHeight - vh * .5;
     drawP = clamp((y - start) / (end - start), 0, 1);
